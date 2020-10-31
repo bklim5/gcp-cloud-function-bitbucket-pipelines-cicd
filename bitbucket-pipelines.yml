@@ -1,0 +1,40 @@
+image: python:3.7
+
+options:
+  docker: true
+
+stepdefinitions:
+  - lintingtesting: &lintingtesting
+      name: "Run lint & test"
+      script:
+        - make install-dev
+        - make lint
+        - make test
+        - make coverage
+
+pipelines:
+  default:
+    - step: *lintingtesting
+
+  branches:
+    development:
+      - step: *lintingtesting
+      - step:
+          name: "Deploy to dev GCP project"
+          image: google/cloud-sdk:latest
+          deployment: test
+          script:
+            - echo $DEV_GCP_KEYFILE | base64 --decode > ~/.gcloud-api-key.json
+            - gcloud auth activate-service-account --key-file ~/.gcloud-api-key.json
+            - gcloud functions deploy test-function --entry-point handler --source app --trigger-http --runtime python37 --project $DEV_GCP_PROJECT --region $DEV_GCP_REGION --allow-unauthenticated
+
+    master:
+      - step: *lintingtesting
+      - step:
+          name: "Deploy to prod GCP project"
+          image: google/cloud-sdk:latest
+          deployment: production
+          script:
+            - echo $PROD_GCP_KEYFILE | base64 --decode > ~/.gcloud-api-key.json
+            - gcloud auth activate-service-account --key-file ~/.gcloud-api-key.json
+            - gcloud functions deploy test-function --entry-point handler --source app --trigger-http --runtime python37 --project $PROD_GCP_PROJECT --region $PROD_GCP_REGION --allow-unauthenticated
